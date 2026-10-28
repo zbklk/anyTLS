@@ -35,7 +35,7 @@ detect(){
   [ "$(uname -s)" = Linux ] || fail "仅支持 Linux。"
   [ -r /etc/os-release ] || fail "缺少 /etc/os-release。"
   . /etc/os-release
-  case " $ID \${ID_LIKE:-} " in
+  case " $ID ${ID_LIKE:-} " in
     *alpine*) PKG=apk ;;
     *debian*|*ubuntu*) PKG=apt ;;
     *fedora*|*rhel*|*rocky*|*almalinux*|*centos*|*ol*)
@@ -57,8 +57,8 @@ detect(){
 install_deps(){
   local missing=() c
   for c in curl jq openssl tar gzip sha256sum; do has "$c" || missing+=("$c"); done
-  if [ "\${#missing[@]}" -gt 0 ]; then
-    info "安装系统依赖：\${missing[*]}"
+  if [ "${#missing[@]}" -gt 0 ]; then
+    info "安装系统依赖：${missing[*]}"
     case "$PKG" in
       apt) export DEBIAN_FRONTEND=noninteractive; apt-get update -qq; apt-get install -y -qq curl jq openssl tar gzip coreutils ca-certificates ;;
       apk) apk add --no-cache curl jq openssl tar gzip coreutils ca-certificates ;;
@@ -83,7 +83,7 @@ install_qr(){
 ask(){
   local prompt="$1" default="$2" value
   read -r -p "$prompt [$default]: " value || fail "输入中断"
-  printf '%s' "\${value:-$default}"
+  printf '%s' "${value:-$default}"
 }
 confirm(){
   local ans
@@ -92,15 +92,15 @@ confirm(){
 }
 port_ok(){ [[ "$1" =~ ^[0-9]{1,5}$ ]] && (( 10#$1 >= 1 && 10#$1 <= 65535 )); }
 name_ok(){ [[ "$1" =~ ^[A-Za-z][A-Za-z0-9_-]{0,31}$ ]]; }
-host_ok(){ [ -n "$1" ] && [ "\${#1}" -le 253 ] && [[ "$1" =~ ^[a-zA-Z0-9.:_-]+$ ]] && [[ "$1" != *'..'* ]]; }
-sni_ok(){ [[ "$1" =~ ^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$ ]] && [[ "$1" == *.* ]] && [[ "$1" != *'..'* ]] && [ "\${#1}" -le 253 ]; }
+host_ok(){ [ -n "$1" ] && [ "${#1}" -le 253 ] && [[ "$1" =~ ^[a-zA-Z0-9.:_-]+$ ]] && [[ "$1" != *'..'* ]]; }
+sni_ok(){ [[ "$1" =~ ^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$ ]] && [[ "$1" == *.* ]] && [[ "$1" != *'..'* ]] && [ "${#1}" -le 253 ]; }
 is_ip(){ [[ "$1" =~ ^[0-9.]+$ || "$1" == *:* ]]; }
 urlenc(){ jq -rn --arg v "$1" '$v|@uri'; }
 random_password(){ openssl rand -hex 24; }
 public_ip(){ curl -4fsS --max-time 8 https://api.ipify.org 2>/dev/null || true; }
 port_busy(){
-  if has ss; then ss -ltnH 2>/dev/null | awk '{print $4}' | grep -Eq ":\${1}$"
-  elif has netstat; then netstat -lnt 2>/dev/null | awk 'NR>2 {print $4}' | grep -Eq ":\${1}$"
+  if has ss; then ss -ltnH 2>/dev/null | awk '{print $4}' | grep -Eq ":${1}$"
+  elif has netstat; then netstat -lnt 2>/dev/null | awk 'NR>2 {print $4}' | grep -Eq ":${1}$"
   else warn "无 ss/netstat，无法自动检测端口冲突。"; return 1; fi
 }
 
@@ -190,7 +190,7 @@ latest_core(){
   release="$(curl -fLsS --connect-timeout 12 --max-time 50 --retry 2 -H 'Accept: application/vnd.github+json' https://api.github.com/repos/SagerNet/sing-box/releases/latest)" || fail "无法查询官方 Release。"
   tag="$(jq -r '.tag_name // empty' <<< "$release")"
   [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "最新 Release 版本号异常：$tag"
-  version="\${tag#v}"
+  version="${tag#v}"
   if [ "$PKG" = apk ]; then
     asset="sing-box-$version-linux-$ARCH-musl.tar.gz"
   else
@@ -203,7 +203,7 @@ latest_core(){
   file="$WORK/$asset"
   info "下载 $tag / $asset"
   curl -fL --connect-timeout 15 --retry 3 -o "$file" "$url" || fail "内核下载失败"
-  printf '%s  %s\n' "\${digest#sha256:}" "$file" | sha256sum --check --status || fail "下载文件 SHA-256 校验失败"
+  printf '%s  %s\n' "${digest#sha256:}" "$file" | sha256sum --check --status || fail "下载文件 SHA-256 校验失败"
   mkdir -p "$WORK/extract"
   tar -xzf "$file" -C "$WORK/extract" || fail "解压失败"
   local source
@@ -272,7 +272,7 @@ check_cert(){
   [ "$a" = "$b" ] || fail "证书与私钥不匹配"
 }
 apply_state(){
-  local proposed="$1" new_core="\${2:-}"
+  local proposed="$1" new_core="${2:-}"
   state_valid "$proposed" || { warn "节点元数据不合法"; rollback; return 1; }
   mkdir -p "$DIR" "$(dirname "$BIN")"
   chmod 700 "$DIR" "$(dirname "$BIN")"
@@ -310,7 +310,7 @@ acme_ensure(){
   [ -n "$(acme_bin)" ] || fail "没有找到 acme.sh"
 }
 acme_issue(){
-  local sni="$1" method="$2" plugin="\${3:-}"
+  local sni="$1" method="$2" plugin="${3:-}"
   acme_ensure
   local acme
   acme="$(acme_bin)"
@@ -491,7 +491,7 @@ status(){
   read_state
   "$BIN" version | head -n 1
   if active; then ok "$APP 运行中"; else warn "$APP 未运行"; fi
-  if has ss; then ss -ltn | grep -E ":\$(jq -r '.listen_port' "$STATE")[[:space:]]" || true; fi
+  if has ss; then ss -ltn | grep -E ":$(jq -r '.listen_port' "$STATE")[[:space:]]" || true; fi
   jq -r '"节点端口：\(.listen_port)  外部端口：\(.external_port)  用户数：\(.users|length)"' "$STATE"
 }
 service_menu(){
@@ -638,4 +638,4 @@ main(){
     esac
   done
 }
-if [[ "\${BASH_SOURCE[0]}" == "$0" ]]; then main "$@"; fi
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then main "$@"; fi
