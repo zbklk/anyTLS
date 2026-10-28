@@ -313,24 +313,53 @@ acme_ensure(){
 acme_issue(){
   local sni="$1" method="$2" plugin="${3:-}"
   acme_ensure
-  local acme
+  local acme base reload
   acme="$(acme_bin)"
-  "$acme" --set-default-ca --server letsencrypt
-  if [ "$method" = http ]; then
-    warn "HTTP-01 需要域名解析到这台 VPS，公网 TCP/80 可连接且没有程序占用"
-    if port_busy 80; then fail "本机 TCP/80 已占用，请换用 DNS-01 或已有证书"; fi
-    "$acme" --issue --standalone -d "$sni" --keylength ec-256
-  else
-    warn "DNS-01 插件 $plugin 所需的 API 凭据必须已按 acme.sh 官方说明配置到环境变量或账户配置"
-    "$acme" --issue --dns "$plugin" -d "$sni" --keylength ec-256
-  fi
-  local base="$DIR/certs/issued-$(date +%Y%m%d%H%M%S)-$$"
+  "$acme" --set-default-ca --server letsencrypt || fail "无法设置 Let's Encrypt CA"
+  base="$DIR/certs/issued-$(date +%Y%m%d%H%M%S)-$$"
   CERT_PATH="$base.crt"; KEY_PATH="$base.key"; CERT_MODE="acme"
   mkdir -p "$DIR/certs"; chmod 700 "$DIR/certs"
-  local reload="systemctl restart $APP"
-  [ "$INIT" = openrc ] && reload="rc-service $APP restart"
-  "$acme" --install-cert -d "$sni" --ecc --fullchain-file "$CERT_PATH" --key-file "$KEY_PATH" --reloadcmd "$reload"
+
+  # 证书续签时，若服务尚未创建也不应导致证书安装失败。
+  if [ "$INIT" = openrc ]; then
+    reload="rc-service $APP restart >/dev/null 2>&1 || true"
+  else
+    reload="systemctl try-restart $APP >/dev/null 2>&1 || true"
+  fi
+
+  # 已存在有效证书时直接复用，避免 --issue 的「Domains not changed / Skipping」
+  # 导致 set -e 提前退出，也避免不必要的 ACME 重复签发。
+  if "$acme" --install-cert -d "$sni" --ecc \
+      --fullchain-file "$CERT_PATH" --key-file "$KEY_PATH" \
+      --reloadcmd "$reload" >/dev/null 2>&1 \
+      && (check_cert "$CERT_PATH" "$KEY_PATH" "$sni") >/dev/null 2>&1; then
+    chmod 600 "$KEY_PATH" "$CERT_PATH"
+    ok "已复用并验证已有的 Let's Encrypt 证书：$sni（无需重新申请）"
+    return 0
+  fi
+
+  # 尚无有效 ECC 证书：申请新证书；不会使用 --force 强制重复签发。
+  rm -f -- "$CERT_PATH" "$KEY_PATH"
+  info "未找到可复用的有效 ECC 证书，开始申请：$sni"
+  if [ "$method" = http ]; then
+    warn "HTTP-01 需要域名解析到本 VPS，公网 TCP/80 可连接且没有其他程序监听"
+    port_busy 80 && fail "本机 TCP/80 已占用，请换用 DNS-01 或已有证书"
+    if ! "$acme" --issue --standalone -d "$sni" --keylength ec-256; then
+      fail "HTTP-01 申请未成功。请检查域名解析、Cloudflare 灰云及公网 80/TCP；不会强制重新签发。"
+    fi
+  else
+    warn "DNS-01 插件 $plugin 必须已正确配置 DNS API Token"
+    if ! "$acme" --issue --dns "$plugin" -d "$sni" --keylength ec-256; then
+      fail "DNS-01 申请未成功。请检查 DNS API 插件及授权。"
+    fi
+  fi
+
+  "$acme" --install-cert -d "$sni" --ecc \
+    --fullchain-file "$CERT_PATH" --key-file "$KEY_PATH" \
+    --reloadcmd "$reload" || fail "证书签发后安装失败，请检查 acme.sh 输出"
   chmod 600 "$KEY_PATH" "$CERT_PATH"
+  check_cert "$CERT_PATH" "$KEY_PATH" "$sni"
+  ok "新证书已签发、安装并验证：$sni"
 }
 cert_setup(){
   local domain="$1" choice
