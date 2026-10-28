@@ -305,7 +305,8 @@ acme_ensure(){
   confirm "是否从 get.acme.sh 安装 acme.sh（需信任其安装程序）？" || fail "已取消证书申请"
   curl -fLsS --retry 2 https://get.acme.sh -o "$WORK/install-acme.sh" || fail "无法获取 acme.sh 官方安装器"
   local email
-  email="$(ask 'ACME 联系邮箱' 'admin@example.com')"
+  email="$(ask 'ACME 联系邮箱（请输入真实邮箱）' '')"
+  [[ "$email" =~ ^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$ ]] || fail "ACME 联系邮箱格式无效"
   sh "$WORK/install-acme.sh" "email=$email" || fail "acme.sh 安装失败（请检查 crontab 与安装日志）"
   [ -n "$(acme_bin)" ] || fail "没有找到 acme.sh"
 }
@@ -413,7 +414,7 @@ uri_for(){
   uri="anytls://$(urlenc "$pass")@$host:$ext?security=tls&sni=$(urlenc "$sni")"
   [ "$mode" = selfsigned ] && uri="$uri&insecure=1"
   label="AnyTLS-$(urlenc "$username")"
-  printf '%s#%s\n' "$uri" "$label"
+  printf '%s#%s' "$uri" "$label"
 }
 show_nodes(){
   read_state
