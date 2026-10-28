@@ -2,7 +2,7 @@ name: AnyTLS v2 script checks
 on:
   push:
     paths:
-      - 'install-anytls-v2.sh'
+      - 'install-anytls-sb.sh'
       - '.github/workflows/anytls-v2-check.yml'
   workflow_dispatch:
 permissions:
@@ -13,14 +13,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Bash syntax
-        run: bash -n install-anytls-v2.sh
+        run: bash -n install-anytls-sb.sh
       - name: Shellcheck errors
-        run: shellcheck -S error install-anytls-v2.sh
+        run: shellcheck -S error install-anytls-sb.sh
       - name: AnyTLS configuration and metadata
         shell: bash
         run: |
           set -Eeuo pipefail
-          source ./install-anytls-v2.sh
+          source ./install-anytls-sb.sh
           fresh
           jq -n '{version:2,address:"203.0.113.1",listen:"0.0.0.0",listen_port:38443,external_port:38443,sni:"node.example.org",cert_path:"/tmp/example.crt",key_path:"/tmp/example.key",cert_mode:"selfsigned",users:[{name:"user1",password:"example"}]}' > "$WORK/state.json"
           state_valid "$WORK/state.json"
