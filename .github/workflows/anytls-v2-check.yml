@@ -26,3 +26,28 @@ jobs:
           state_valid "$WORK/state.json"
           gen_config "$WORK/state.json" "$WORK/config.json"
           jq -e '.inbounds[0].type=="anytls" and .inbounds[0].listen_port==38443 and .inbounds[0].users[0].password=="example" and .inbounds[0].tls.enabled==true and .outbounds[0].type=="direct"' "$WORK/config.json"
+
+      - name: Validate generated server config with official sing-box
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          release="$(curl -fsSL --retry 2 https://api.github.com/repos/SagerNet/sing-box/releases/latest)"
+          tag="$(jq -r '.tag_name' <<< "$release")"
+          version="$(echo "$tag" | sed 's/^v//')"
+          asset="sing-box-$version-linux-amd64.tar.gz"
+          uri="$(jq -r --arg n "$asset" '.assets[] | select(.name==$n) | .browser_download_url' <<< "$release")"
+          digest="$(jq -r --arg n "$asset" '.assets[] | select(.name==$n) | .digest' <<< "$release")"
+          test -n "$uri"
+          echo "$digest" | grep -Eq '^sha256:[a-f0-9]{64}$'
+          curl -fLsS --retry 3 -o /tmp/singbox-ci.tar.gz "$uri"
+          echo "${digest#sha256:}  /tmp/singbox-ci.tar.gz" | sha256sum --check
+          mkdir -p /tmp/singbox-ci
+          tar -xzf /tmp/singbox-ci.tar.gz -C /tmp/singbox-ci
+          sb="$(find /tmp/singbox-ci -type f -name sing-box | head -n 1)"
+          test -x "$sb"
+          openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 1 -sha256 -keyout /tmp/anytls-ci.key -out /tmp/anytls-ci.crt -subj '/CN=node.example.org' -addext 'subjectAltName=DNS:node.example.org'
+          source ./install-anytls-sb.sh
+          fresh
+          jq -n '{version:2,address:"127.0.0.1",listen:"127.0.0.1",listen_port:38443,external_port:38443,sni:"node.example.org",cert_path:"/tmp/anytls-ci.crt",key_path:"/tmp/anytls-ci.key",cert_mode:"selfsigned",users:[{name:"user1",password:"example"}]}' > "$WORK/state.json"
+          gen_config "$WORK/state.json" "$WORK/config.json"
+          "$sb" check -c "$WORK/config.json"
