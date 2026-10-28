@@ -333,7 +333,7 @@ acme_issue(){
 }
 cert_setup(){
   local domain="$1" choice
-  printf '\nTLS 证书方式：\n  1) 使用已有有效证书（推荐）\n  2) Let's Encrypt HTTP-01（公网 TCP/80）\n  3) Let's Encrypt DNS-01（已配置 DNS API 插件）\n  4) 自签名证书（仅测试，客户端需允许不安全证书）\n'
+  printf '\nTLS 证书方式：\n  1) 使用已有有效证书（推荐）\n  2) Let’s Encrypt HTTP-01（公网 TCP/80）\n  3) Let’s Encrypt DNS-01（已配置 DNS API 插件）\n  4) 自签名证书（仅测试，客户端需允许不安全证书）\n'
   choice="$(ask '选择证书方式' 1)"
   case "$choice" in
     1)
