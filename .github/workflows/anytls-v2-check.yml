@@ -1,0 +1,28 @@
+name: AnyTLS v2 script checks
+on:
+  push:
+    paths:
+      - 'install-anytls-v2.sh'
+      - '.github/workflows/anytls-v2-check.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  lint-and-config:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bash syntax
+        run: bash -n install-anytls-v2.sh
+      - name: Shellcheck errors
+        run: shellcheck -S error install-anytls-v2.sh
+      - name: AnyTLS configuration and metadata
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          source ./install-anytls-v2.sh
+          fresh
+          jq -n '{version:2,address:"203.0.113.1",listen:"0.0.0.0",listen_port:38443,external_port:38443,sni:"node.example.org",cert_path:"/tmp/example.crt",key_path:"/tmp/example.key",cert_mode:"selfsigned",users:[{name:"user1",password:"example"}]}' > "$WORK/state.json"
+          state_valid "$WORK/state.json"
+          gen_config "$WORK/state.json" "$WORK/config.json"
+          jq -e '.inbounds[0].type=="anytls" and .inbounds[0].listen_port==38443 and .inbounds[0].users[0].password=="example" and .inbounds[0].tls.enabled==true and .outbounds[0].type=="direct"' "$WORK/config.json"
